@@ -131,6 +131,25 @@ itself, or **Skip** to leave them for a setup script. It resolves in the same or
 workspace default: a `"worktreeSubmodules"` value in the `t3.json` of the branch being checked out
 applies when the project and environment are both on **Inherit**.
 
+## Rift worktrees
+
+A new worktree starts cold: dependencies, build caches and `.env` files are missing until a setup
+script recreates them. [Rift](https://github.com/anomalyco/rift) instead makes a copy-on-write
+snapshot of the whole project folder in well under a second, so ignored files come along. To use
+it, install Rift (`npm install -g rift-snapshot`), run `rift init` once in the project folder, then
+set **Worktree provider** in **Settings → General** to **Rift snapshot**, or add
+`"worktreeProvider": "rift"` to `t3.json`.
+
+The new thread still starts on its own branch at the base you picked. Uncommitted edits in your
+checkout are not carried over, but ignored files are. Rift leaves out regenerable folders such as
+`node_modules` and `dist` by default, so keep your setup script for those. The snapshot must be on
+the same filesystem as the project, which the worktree location below controls.
+
+A Rift workspace is its own repository. When T3 Code removes one, it first copies the thread's
+branch back to your checkout, and keeps the workspace if that fails. Removed workspaces go to
+Rift's trash; run `rift gc` to free the space. Automatic storage cleanup leaves Rift workspaces
+alone, and pull request checkouts always use git worktrees.
+
 ## Worktree location
 
 New worktrees go in the `worktrees` folder of the T3 home directory. To put them somewhere else,

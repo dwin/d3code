@@ -42,11 +42,15 @@ import {
   type ThreadPullRequestKey,
   type VcsCreateWorktreeInput,
   type VcsCreateWorktreeResult,
+  type VcsRemoveWorktreeInput,
+  T3_PROJECT_FILE_NAME,
 } from "@t3tools/contracts";
 import {
   hasProjectSettingsOverrides,
+  resolveProjectFileBackedSetting,
   resolveProjectSettings,
 } from "@t3tools/shared/projectSettings";
+import { parseT3ProjectFile } from "@t3tools/shared/t3ProjectFile";
 import {
   detectSourceControlProviderFromGitRemoteUrl,
   mergeGitStatusParts,
@@ -83,6 +87,7 @@ import { detachStackFrame } from "./detachStackFrame.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import type { GitManagerServiceError } from "@t3tools/contracts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as RiftWorktrees from "../vcs/RiftWorktrees.ts";
 import * as SourceControlProvider from "@t3tools/source-control-core/server/SourceControlProvider";
 import * as SourceControlProviderRegistry from "../sourceControl/SourceControlProviderRegistry.ts";
 import type { ChangeRequest } from "@t3tools/contracts";
@@ -122,6 +127,10 @@ export class GitManager extends Context.Service<
       input: VcsCreateWorktreeInput,
       options?: GitVcsDriver.CreateWorktreeOptions,
     ) => Effect.Effect<VcsCreateWorktreeResult, GitCommandError>;
+    /** Removes a thread worktree, whichever `worktreeProvider` made it. */
+    readonly removeWorktree: (
+      input: VcsRemoveWorktreeInput,
+    ) => Effect.Effect<void, GitCommandError>;
     readonly status: (
       input: VcsStatusInput,
     ) => Effect.Effect<VcsStatusResult, GitManagerServiceError>;
@@ -722,6 +731,7 @@ function toPullRequestHeadRemoteInfo(pr: {
 
 export const make = Effect.gen(function* () {
   const gitCore = yield* GitVcsDriver.GitVcsDriver;
+  const riftWorktrees = yield* RiftWorktrees.RiftWorktrees;
   const sourceControlProviders = yield* SourceControlProviderRegistry.SourceControlProviderRegistry;
   const textGeneration = yield* TextGeneration.TextGeneration;
   const providerRegistry = yield* ProviderRegistry.ProviderRegistry;
@@ -758,18 +768,48 @@ export const make = Effect.gen(function* () {
     Effect.map((settings) => settings.worktreesDirectory),
     Effect.orElseSucceed(() => ""),
   );
+  // Best effort: a missing or invalid t3.json defers to the built-in default.
+  const readProjectFile = (cwd: string) =>
+    fileSystem.readFileString(path.join(cwd, T3_PROJECT_FILE_NAME)).pipe(
+      Effect.map(parseT3ProjectFile),
+      Effect.orElseSucceed(() => null),
+    );
   const createWorktree: GitManager["Service"]["createWorktree"] = Effect.fn(
     "GitManager.createWorktree",
   )(function* (input, options) {
+    const projectSettings = yield* projectSettingsFor(input).pipe(
+      Effect.map(({ settings }) => settings),
+      Effect.orElseSucceed(() => null),
+    );
+    const worktreesDirectory = yield* readWorktreesDirectory;
+    // The setting alone is not enough: an unset one defers to the checkout's t3.json.
+    const provider = resolveProjectFileBackedSetting(
+      "worktreeProvider",
+      projectSettings?.worktreeProvider ?? null,
+      projectSettings?.worktreeProvider != null ? null : yield* readProjectFile(input.cwd),
+    ).value;
+    if (provider === "rift") {
+      return yield* riftWorktrees.createWorktree(input, {
+        worktreesDirectory: options?.worktreesDirectory ?? worktreesDirectory,
+        ...(options?.progress?.onWorktreeClaimed
+          ? { onWorktreeClaimed: options.progress.onWorktreeClaimed }
+          : {}),
+      });
+    }
     const submodules =
       options?.submodules !== undefined
         ? options.submodules
-        : yield* projectSettingsFor(input).pipe(
-            Effect.map(({ settings }) => settings.worktreeSubmodules),
-            Effect.orElseSucceed(() => null),
-          );
-    const worktreesDirectory = yield* readWorktreesDirectory;
+        : (projectSettings?.worktreeSubmodules ?? null);
     return yield* gitCore.createWorktree(input, { worktreesDirectory, ...options, submodules });
+  });
+
+  const removeWorktree: GitManager["Service"]["removeWorktree"] = Effect.fn(
+    "GitManager.removeWorktree",
+  )(function* (input) {
+    // Ownership, not the current setting: the setting may have changed since.
+    return (yield* riftWorktrees.ownsWorktree(input.path))
+      ? yield* riftWorktrees.removeWorktree(input)
+      : yield* gitCore.removeWorktree(input);
   });
 
   const readRepositoryInstructions = (cwd: string, fileName: string) =>
@@ -3189,6 +3229,7 @@ export const make = Effect.gen(function* () {
 
   return GitManager.of({
     createWorktree,
+    removeWorktree,
     localStatus,
     remoteStatus,
     status,

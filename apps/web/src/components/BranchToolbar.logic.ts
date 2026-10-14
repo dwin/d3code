@@ -3,6 +3,7 @@ import type {
   EnvironmentMachineKind,
   VcsRef,
   ProjectId,
+  WorktreeProvider,
   WorktreeSubmodules,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
@@ -102,6 +103,11 @@ export const WORKTREE_SUBMODULES_LABELS: Record<WorktreeSubmodules, string> = {
   recursive: "Recursive",
   "top-level": "Top level only",
   none: "Skip",
+};
+
+export const WORKTREE_PROVIDER_LABELS: Record<WorktreeProvider, string> = {
+  git: "Git worktree",
+  rift: "Rift snapshot",
 };
 
 export function resolveCurrentWorkspaceLabel(activeWorktreePath: string | null): string {

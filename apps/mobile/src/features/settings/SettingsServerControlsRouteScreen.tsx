@@ -9,6 +9,7 @@ import {
   type ServerSettings,
   type ServerSettingsPatch,
   type ThreadEnvMode,
+  type WorktreeProvider,
   type WorktreeSubmodules,
   PROJECT_SCOPED_SERVER_SETTING_KEYS,
   type ProjectScopedServerSettingKey,
@@ -49,7 +50,12 @@ const PAGE_TITLES: Record<SettingsPage, string> = {
 };
 
 const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettingKey[]> = {
-  "new-threads": ["defaultThreadEnvMode", "worktreeSubmodules", "defaultRuntimeMode"],
+  "new-threads": [
+    "defaultThreadEnvMode",
+    "worktreeProvider",
+    "worktreeSubmodules",
+    "defaultRuntimeMode",
+  ],
   "source-control": [
     "defaultAutoPull",
     "removeAgentCreditsOnMerge",
@@ -61,6 +67,25 @@ const PAGE_PROJECT_KEYS: Record<SettingsPage, readonly ProjectScopedServerSettin
   "agent-behavior": ["responseStreamingMode", "enableAgentBrowserAccess"],
   maintenance: ["continueThreadsAfterServerUpdate"],
 };
+
+const PROVIDER_CHOICES: ReadonlyArray<{
+  readonly mode: WorktreeProvider | null;
+  readonly label: string;
+  readonly description: string;
+}> = [
+  // Only offered at environment scope; a project falls back through "Use defaults".
+  {
+    mode: null,
+    label: "Inherit",
+    description: "Use the repository's t3.json, or git worktrees.",
+  },
+  { mode: "git", label: "Git worktree", description: "Check out a fresh git worktree." },
+  {
+    mode: "rift",
+    label: "Rift snapshot",
+    description: "Copy-on-write snapshot that keeps .env and caches. Needs rift init.",
+  },
+];
 
 const SUBMODULE_CHOICES: ReadonlyArray<{
   readonly mode: WorktreeSubmodules | null;
@@ -295,6 +320,31 @@ function ServerSettingsDetail(props: { readonly page: SettingsPage }) {
                         separated={index > 0}
                         disabled={disabledFor("defaultThreadEnvMode")}
                         onPress={() => write({ defaultThreadEnvMode: choice.mode })}
+                      />
+                    ))}
+                  </SettingsSection>
+                  <SettingsSection
+                    title="Worktree provider"
+                    trailing={
+                      pendingWrites === 0 && isMixed("worktreeProvider") ? (
+                        <MixedValuesLabel projectSelected={projectSelected} />
+                      ) : null
+                    }
+                  >
+                    {PROVIDER_CHOICES.filter(
+                      (choice) => choice.mode !== null || !projectSelected,
+                    ).map((choice, index) => (
+                      <SettingsChoiceRow
+                        key={choice.mode ?? "inherit"}
+                        label={choice.label}
+                        description={choice.description}
+                        selected={
+                          !isMixed("worktreeProvider") &&
+                          uniform("worktreeProvider") === choice.mode
+                        }
+                        separated={index > 0}
+                        disabled={disabledFor("worktreeProvider")}
+                        onPress={() => write({ worktreeProvider: choice.mode })}
                       />
                     ))}
                   </SettingsSection>

@@ -52,6 +52,8 @@ import type * as SourceControlHost from "@t3tools/source-control-core/server/Sou
 import * as TestSourceControlHost from "@t3tools/source-control-testing/TestSourceControlHost";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import * as GitVcsDriver from "../vcs/GitVcsDriver.ts";
+import * as RiftWorktrees from "../vcs/RiftWorktrees.ts";
+import { withFakeRift } from "../vcs/testing/fakeRift.ts";
 import * as VcsProcess from "../vcs/VcsProcess.ts";
 import * as VcsDriverRegistry from "../vcs/VcsDriverRegistry.ts";
 import * as VcsProjectConfig from "../vcs/VcsProjectConfig.ts";
@@ -850,6 +852,7 @@ function makeManager(input?: {
     layerServerSettings,
   ).pipe(
     Layer.provideMerge(layerSourceControlRegistry),
+    Layer.provideMerge(RiftWorktrees.layer),
     Layer.provideMerge(layerVcsDriver),
     Layer.provideMerge(NodeServices.layer),
   );
@@ -7030,6 +7033,42 @@ it.layer(layerGitManagerTest)("GitManager", (it) => {
           label: "Creating pull request...",
         }),
       ]);
+    }),
+  );
+
+  it.effect("creates worktrees with the provider the repository's t3.json names", () =>
+    Effect.gen(function* () {
+      const rift = yield* withFakeRift;
+      const repoDir = yield* makeTempDir("t3code-git-manager-rift-");
+      const worktreesDirectory = yield* makeTempDir("t3code-git-manager-rift-worktrees-");
+      yield* initRepo(repoDir);
+      NodeFS.writeFileSync(NodePath.join(repoDir, "t3.json"), '{ "worktreeProvider": "rift" }\n');
+      yield* runGit(repoDir, ["add", "t3.json"]);
+      yield* runGit(repoDir, ["commit", "-m", "Use Rift"]);
+      yield* rift.init(repoDir);
+
+      const { manager } = yield* makeManager({ serverSettings: { worktreesDirectory } });
+      const created = yield* manager.createWorktree({
+        cwd: repoDir,
+        refName: "main",
+        newRefName: "feature/rift",
+        path: null,
+      });
+      expect(NodeFS.existsSync(NodePath.join(created.worktree.path, ".rift"))).toBe(true);
+      yield* manager.removeWorktree({ cwd: repoDir, path: created.worktree.path, force: true });
+      expect(NodeFS.existsSync(created.worktree.path)).toBe(false);
+
+      // An environment setting outranks the file.
+      const { manager: gitManager } = yield* makeManager({
+        serverSettings: { worktreesDirectory, worktreeProvider: "git" },
+      });
+      const worktree = yield* gitManager.createWorktree({
+        cwd: repoDir,
+        refName: "main",
+        newRefName: "feature/git",
+        path: null,
+      });
+      expect(NodeFS.statSync(NodePath.join(worktree.worktree.path, ".git")).isFile()).toBe(true);
     }),
   );
 });

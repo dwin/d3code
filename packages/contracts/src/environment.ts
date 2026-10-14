@@ -67,6 +67,14 @@ export type ThreadEnvMode = typeof ThreadEnvMode.Type;
  */
 export const WorktreeSubmodules = Schema.Literals(["recursive", "top-level", "none"]);
 export type WorktreeSubmodules = typeof WorktreeSubmodules.Type;
+
+/**
+ * What makes a thread's worktree: `git worktree add` ("git"), or a Rift
+ * copy-on-write snapshot of the project ("rift"), which carries ignored files
+ * such as `.env` and caches into the new workspace.
+ */
+export const WorktreeProvider = Schema.Literals(["git", "rift"]);
+export type WorktreeProvider = typeof WorktreeProvider.Type;
 export type ExecutionEnvironmentPlatform = typeof ExecutionEnvironmentPlatform.Type;
 
 /** How a server can replace itself with another version when asked over RPC.
