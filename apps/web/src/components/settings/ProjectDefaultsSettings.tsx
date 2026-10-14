@@ -2,6 +2,7 @@ import {
   DEFAULT_SERVER_SETTINGS,
   type ModelSelection,
   type ProviderInstanceId,
+  type WorktreeProvider,
   type WorktreeSubmodules,
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
@@ -18,7 +19,11 @@ import {
 } from "../../providerInstances";
 import { useEnvironments } from "../../state/environments";
 import { EMPTY_SERVER_PROVIDERS } from "../../state/server";
-import { resolveEnvModeLabel, WORKTREE_SUBMODULES_LABELS } from "../BranchToolbar.logic";
+import {
+  resolveEnvModeLabel,
+  WORKTREE_PROVIDER_LABELS,
+  WORKTREE_SUBMODULES_LABELS,
+} from "../BranchToolbar.logic";
 import { ProviderModelPicker } from "../chat/ProviderModelPicker";
 import { runtimeModeConfig, runtimeModeOptions } from "../chat/runtimeModeConfig";
 import { PULL_REQUEST_MERGE_METHOD_LABELS } from "../pullRequest/pullRequestDetail.logic";
@@ -52,6 +57,11 @@ function isWorktreeSubmodules(value: string | null): value is WorktreeSubmodules
   return value !== null && (WORKTREE_SUBMODULES_OPTIONS as readonly string[]).includes(value);
 }
 
+const WORKTREE_PROVIDER_OPTIONS = ["git", "rift"] as const;
+function isWorktreeProvider(value: string | null): value is WorktreeProvider {
+  return value !== null && (WORKTREE_PROVIDER_OPTIONS as readonly string[]).includes(value);
+}
+
 export function ProjectDefaultsSettings({ category }: { category: ProjectSettingsCategory }) {
   const { scope, target, targets, connectedEnvironments } = useSettingsScope();
   const settings = useScopedSettings();
@@ -82,6 +92,7 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
   const PermissionIcon = runtimeModeConfig[settings.defaultRuntimeMode].icon;
   const mixedWorkspace = useScopedSettingsMixed(["defaultThreadEnvMode"]);
   const mixedSubmodules = useScopedSettingsMixed(["worktreeSubmodules"]);
+  const mixedProvider = useScopedSettingsMixed(["worktreeProvider"]);
   const mixedBrowser = useScopedSettingsMixed(["enableAgentBrowserAccess"]);
   const mixedAutoPull = useScopedSettingsMixed(["defaultAutoPull"]);
   const mixedAgentCredits = useScopedSettingsMixed(["removeAgentCreditsOnMerge"]);
@@ -342,6 +353,52 @@ export function ProjectDefaultsSettings({ category }: { category: ProjectSetting
             }
           />
           {workspaceRow}
+          <SettingsRow
+            serverScoped
+            settingKeys={["worktreeProvider"]}
+            mixed={mixedProvider}
+            {...searchableSetting("worktree-provider")}
+            description={
+              isProjectScope
+                ? "What makes new worktrees in this project. Rift snapshots the project folder copy-on-write, so ignored files like .env and caches come along. Run `rift init` in the project first."
+                : "What makes new worktrees. Rift snapshots the project folder copy-on-write, so ignored files like .env and caches come along. Projects and their t3.json can override it."
+            }
+            resetAction={
+              !isProjectScope && settings.worktreeProvider !== null ? (
+                <SettingResetButton
+                  label="worktree provider"
+                  onClick={() => updateSettings({ worktreeProvider: null })}
+                />
+              ) : null
+            }
+            control={
+              <Select
+                value={mixedProvider ? null : (effective?.worktreeProvider ?? null)}
+                onValueChange={(value) => {
+                  if (isWorktreeProvider(value)) updateSettings({ worktreeProvider: value });
+                }}
+              >
+                <SelectTrigger size="sm" aria-label="Worktree provider">
+                  <SelectValue>
+                    {(value: string | null) =>
+                      isWorktreeProvider(value)
+                        ? WORKTREE_PROVIDER_LABELS[value]
+                        : unavailable
+                          ? "Unavailable"
+                          : "Mixed"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectPopup align="end" alignItemWithTrigger={false}>
+                  {WORKTREE_PROVIDER_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {WORKTREE_PROVIDER_LABELS[option]}
+                    </SelectItem>
+                  ))}
+                </SelectPopup>
+              </Select>
+            }
+          />
           <SettingsRow
             serverScoped
             settingKeys={["worktreeSubmodules"]}

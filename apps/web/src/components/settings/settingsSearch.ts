@@ -498,6 +498,13 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: ["default workspace mode draft local worktree"],
   },
   {
+    id: "worktree-provider",
+    title: "Worktree provider",
+    to: "/settings/general",
+    scope: "project-defaults",
+    searchTerms: ["rift git worktree copy-on-write snapshot clone workspace t3.json"],
+  },
+  {
     id: "worktree-submodules",
     title: "Submodules",
     to: "/settings/general",
